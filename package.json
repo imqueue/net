@@ -1,0 +1,104 @@
+{
+  "name": "@imqueue/net",
+  "version": "1.0.0",
+  "description": "Fast and reliable binary network address checker for node with IPv4 & IPv6 support",
+  "keywords": [
+    "network",
+    "verify",
+    "ip-address",
+    "ipv4",
+    "ipv6",
+    "checker",
+    "binary"
+  ],
+  "scripts": {
+    "prepublishOnly": "npm run build",
+    "postpublish": "./bin/wiki.sh",
+    "clean:dts": "find . -name '*.d.ts' -not -wholename '*node_modules*' -type f -delete",
+    "clean:map": "find . -name '*.js.map' -not -wholename '*node_modules*' -type f -delete",
+    "clean:js": "find . -name '*.js' -not -wholename '*node_modules*' -not -wholename '*bin/*' -type f -delete",
+    "clean:build": "rm -rf ./node_modules/@types ; find . -name '*.js.map' -type f -delete ; find . -name '*.ts' -type f -delete",
+    "clean:test": "rm -rf .nyc_output coverage",
+    "clean:doc": "rm -rf docs",
+    "clean": "npm run clean:test ; npm run clean:dts ; npm run clean:map ; npm run clean:js ; npm run clean:doc",
+    "build": "tsc",
+    "mocha": "nyc mocha",
+    "show:test": "/usr/bin/env node -e \"require('open')('file://`pwd`/coverage/index.html',{wait:false});\"",
+    "show:doc": "/usr/bin/env node -e \"require('open')('file://`pwd`/docs/index.html',{wait:false});\"",
+    "test": "npm run build && npm run mocha && npm run show:test && ((test ! -z \"${CI}\" && nyc report --reporter=text-lcov | coveralls) || exit 0)",
+    "doc": "npm run clean && typedoc --excludePrivate --excludeExternals --hideGenerator --exclude \"**/+(debug|test|node_modules|docs|coverage|.nyc_output|examples)/**/*\" --out ./docs . && npm run show:doc",
+    "help": "npm-scripts-help"
+  },
+  "author": "imqueue.com <support@imqueue.com>",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/imqueue/net.git"
+  },
+  "bugs": {
+    "url": "https://github.com/imqueue/net/issues"
+  },
+  "homepage": "https://github.com/imqueue/net",
+  "dependencies": {
+    "@types/node": "^16.11.6",
+    "bigint-buffer": "^1.1.5",
+    "ip-regex": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.2.22",
+    "@types/mocha": "^9.0.0",
+    "@types/mock-require": "^2.0.0",
+    "@types/sinon": "^10.0.6",
+    "@typescript-eslint/eslint-plugin": "^5.2.0",
+    "@typescript-eslint/parser": "^5.2.0",
+    "@typescript-eslint/typescript-estree": "^5.2.0",
+    "chai": "^4.3.4",
+    "eslint": "^8.1.0",
+    "glob": "^7.2.0",
+    "minimist": "^1.2.5",
+    "mocha": "^9.1.3",
+    "mocha-lcov-reporter": "^1.3.0",
+    "mock-require": "^3.0.3",
+    "npm-scripts-help": "^0.8.0",
+    "nyc": "^15.1.0",
+    "open": "^8.4.0",
+    "sinon": "^12.0.1",
+    "source-map-support": "^0.5.20",
+    "ts-node": "^10.4.0",
+    "typedoc": "^0.22.7",
+    "typescript": "^4.4.4"
+  },
+  "main": "index.js",
+  "typescript": {
+    "definitions": "index.d.ts"
+  },
+  "mocha": {
+    "require": [
+      "ts-node/register",
+      "source-map-support/register"
+    ],
+    "recursive": true,
+    "bail": true,
+    "full-trace": true
+  },
+  "nyc": {
+    "check-coverage": true,
+    "extension": [
+      ".ts"
+    ],
+    "exclude": [
+      "**/*.d.ts",
+      "**/test/**",
+      "**/examples/**"
+    ],
+    "require": [
+      "ts-node/register"
+    ],
+    "reporter": [
+      "html",
+      "text",
+      "text-summary",
+      "lcovonly"
+    ]
+  }
+}
