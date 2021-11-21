@@ -5,7 +5,7 @@
     </a>
 </h1>
 <div align="center">
-    <a href="https://travis-ci.com/imqueue/net">
+    <a href="https://app.travis-ci.com/github/imqueue/net">
         <img src="https://travis-ci.com/imqueue/net.svg?branch=master" alt="Build Status">
     </a>
     <a href="https://rawgit.com/imqueue/net/master/LICENSE">
