@@ -1,6 +1,6 @@
 {
   "name": "@imqueue/net",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Fast and reliable binary network address checker for node with IPv4 & IPv6 support",
   "keywords": [
     "network",
