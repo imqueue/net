@@ -22,7 +22,7 @@
 import { NetworkType, sizeOf } from './types';
 import { getType } from './ip-address';
 import { cidrToRangeInt, intRangeToCidr } from './cidr';
-import { toBigIntLE, toBufferLE } from 'bigint-buffer';
+import { toBigIntLE, toBufferLE } from './bigint-buffer';
 
 /**
  * Converts given array of CIDR networks to binary format, where all networks

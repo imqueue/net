@@ -22,7 +22,7 @@
 import { NetworkType, sizeOf } from './types';
 import { getType, ipToInt } from './ip-address';
 import { toBinaryList, toIntArray, toStringArray } from './binary-list';
-import { toBigIntLE } from 'bigint-buffer';
+import { toBigIntLE } from './bigint-buffer';
 
 /**
  * Class NetworkList

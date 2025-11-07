@@ -25,3 +25,4 @@ export * from './types';
 export * from './binary-list';
 export * from './cidr';
 export * from './ip-address';
+export * from './bigint-buffer';
