@@ -21,7 +21,7 @@
  */
 import { expect } from 'chai';
 import { NetworkList, NetworkType } from '../../src';
-import { toBufferLE } from 'bigint-buffer';
+import { toBufferLE } from '../../src';
 import ipv4mask32 from '../data/ipv4-32.json';
 
 describe('NetworkList', () => {
