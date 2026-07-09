@@ -20,10 +20,10 @@
  * <support@imqueue.com> to get commercial licensing options.
  */
 import ipRegex from 'ip-regex';
-import { IPV6_MAX_STR_LEN, NetworkType } from './types';
+import { IPV6_MAX_STR_LEN, NetworkType } from './types/index.js';
 
 function invalid(ip: string) {
-    return `Given network address "${ ip }" is invalid!`;
+    return `Given network address "${ip}" is invalid!`;
 }
 
 /**
@@ -47,12 +47,13 @@ export function getType(ip: string, type?: NetworkType): NetworkType {
             throw new TypeError(invalid(ip));
         }
     } else if (!Object.values(NetworkType).includes(type)) {
-        throw new TypeError(`Given network type ${ type } is invalid!`);
+        throw new TypeError(`Given network type ${type} is invalid!`);
     } else if (getType(ip) !== type) {
-        throw new TypeError(`Looks like given type "${
-            type }" does not match actual type "${
-            getType(ip)
-        }"!`);
+        throw new TypeError(
+            `Looks like given type "${
+                type
+            }" does not match actual type "${getType(ip)}"!`,
+        );
     }
 
     return type;
@@ -70,7 +71,7 @@ export function binToDec(binStr: string): bigint {
 
     for (let i = 0; i < binStr.length; i++) {
         if (binStr[lastIndex - i] === '1') {
-            total += (BigInt(2) ** BigInt(i));
+            total += BigInt(2) ** BigInt(i);
         }
     }
 
@@ -88,17 +89,15 @@ const RX_IPV6_TUNNELS_CLEAN = /\./g;
  * @return {string}
  */
 export function ipv6Pack(ip: string): string {
-    return ip.split(':')
+    return ip
+        .split(':')
         .map(part => {
-            let clean = part.replace(RX_IPV6_OCTET_PACK, '');
+            const clean = part.replace(RX_IPV6_OCTET_PACK, '');
 
-            clean === '' && (clean = '0');
-
-            return clean;
+            return clean === '' ? '0' : clean;
         })
         .join(':')
-        .replace(RX_IPV6_PACK, '::')
-    ;
+        .replace(RX_IPV6_PACK, '::');
 }
 
 /**
@@ -135,9 +134,11 @@ export function ipv6Unpack(ip: string): string {
         throw new TypeError(invalid(ip));
     }
 
-    return parts.map(part =>
-        part.length < 4 ? '0'.repeat(4 - part.length) + part : part,
-    ).join(':');
+    return parts
+        .map(part =>
+            part.length < 4 ? '0'.repeat(4 - part.length) + part : part,
+        )
+        .join(':');
 }
 
 /**
@@ -157,9 +158,7 @@ export function ipToInt(ip: string, type?: NetworkType): bigint {
         let total: number = 0;
 
         for (let i = 0; i < parts.length; i++) {
-            total += parseInt(parts[i]) *
-                Math.pow(256, (parts.length - i - 1))
-            ;
+            total += parseInt(parts[i]) * Math.pow(256, parts.length - i - 1);
         }
 
         return BigInt(total);
@@ -197,21 +196,32 @@ export function intToIp(
 ): string {
     if (type === NetworkType.IPV6) {
         return (canonical ? ipv6Unpack : ipv6Pack)(
-            (intIp >> BigInt(112)).toString(16) + ':' +
-            (intIp >> BigInt(96) & BigInt(0xFFFF)).toString(16) + ':' +
-            (intIp >> BigInt(80) & BigInt(0xFFFF)).toString(16) + ':' +
-            (intIp >> BigInt(64) & BigInt(0xFFFF)).toString(16) + ':' +
-            (intIp >> BigInt(48) & BigInt(0xFFFF)).toString(16) + ':' +
-            (intIp >> BigInt(32) & BigInt(0xFFFF)).toString(16) + ':' +
-            (intIp >> BigInt(16) & BigInt(0xFFFF)).toString(16) + ':' +
-            (intIp & BigInt(0xFFFF)).toString(16),
+            (intIp >> BigInt(112)).toString(16) +
+                ':' +
+                ((intIp >> BigInt(96)) & BigInt(0xffff)).toString(16) +
+                ':' +
+                ((intIp >> BigInt(80)) & BigInt(0xffff)).toString(16) +
+                ':' +
+                ((intIp >> BigInt(64)) & BigInt(0xffff)).toString(16) +
+                ':' +
+                ((intIp >> BigInt(48)) & BigInt(0xffff)).toString(16) +
+                ':' +
+                ((intIp >> BigInt(32)) & BigInt(0xffff)).toString(16) +
+                ':' +
+                ((intIp >> BigInt(16)) & BigInt(0xffff)).toString(16) +
+                ':' +
+                (intIp & BigInt(0xffff)).toString(16),
         );
     } else {
-        return (intIp >> BigInt(24)) + '.' +
-            (intIp >> BigInt(16) & BigInt(0xFF)) + '.' +
-            (intIp >> BigInt(8) & BigInt(0xFF)) + '.' +
-            (intIp & BigInt(0xFF))
-        ;
+        return (
+            (intIp >> BigInt(24)) +
+            '.' +
+            ((intIp >> BigInt(16)) & BigInt(0xff)) +
+            '.' +
+            ((intIp >> BigInt(8)) & BigInt(0xff)) +
+            '.' +
+            (intIp & BigInt(0xff))
+        );
     }
 }
 

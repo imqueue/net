@@ -19,9 +19,9 @@
  * purchase a proprietary commercial license. Please contact us at
  * <support@imqueue.com> to get commercial licensing options.
  */
-import { NetworkType, sizeOf } from './types';
-import { getType, ipToInt } from './ip-address';
-import { toBinaryList, toIntArray, toStringArray } from './binary-list';
+import { NetworkType, sizeOf } from './types/index.js';
+import { getType, ipToInt } from './ip-address.js';
+import { toBinaryList, toIntArray, toStringArray } from './binary-list.js';
 import { toBigIntLE } from 'bigint-buffer';
 
 /**
@@ -63,10 +63,7 @@ export class NetworkList {
      * @param {string[] | Buffer} networks
      * @param {NetworkType} type
      */
-    public constructor(
-        networks: string[] | Buffer,
-        type?: NetworkType,
-    ) {
+    public constructor(networks: string[] | Buffer, type?: NetworkType) {
         const invalidList = 'Given network list is invalid!';
 
         if (Array.isArray(networks)) {
@@ -112,14 +109,10 @@ export class NetworkList {
                 offset,
                 offset + this.recordSize,
             );
-            const startIp = toBigIntLE(record.slice(
-                0,
-                this.addressSize,
-            ));
-            const endIp = toBigIntLE(record.slice(
-                this.addressSize,
-                this.recordSize,
-            ));
+            const startIp = toBigIntLE(record.slice(0, this.addressSize));
+            const endIp = toBigIntLE(
+                record.slice(this.addressSize, this.recordSize),
+            );
 
             if (startIp <= intIp && endIp >= intIp) {
                 return true;
@@ -136,9 +129,12 @@ export class NetworkList {
     }
 
     private static isValidBuffer(buf: any, type?: NetworkType): boolean {
-        return !!type && Buffer.isBuffer(buf) && buf.byteLength > 0 &&
+        return (
+            !!type &&
+            Buffer.isBuffer(buf) &&
+            buf.byteLength > 0 &&
             toIntArray(buf, type).length === toStringArray(buf, type).length
-        ;
+        );
     }
 
     /**

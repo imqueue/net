@@ -19,17 +19,16 @@
  * purchase a proprietary commercial license. Please contact us at
  * <support@imqueue.com> to get commercial licensing options.
  */
-import { IPV4_INT_SIZE, IPV6_INT_SIZE } from './constants';
+import { IPV4_INT_SIZE, IPV6_INT_SIZE } from './constants.js';
 
 export enum NetworkType {
     IPV4 = 'ipv4',
     IPV6 = 'ipv6',
 }
 
-export const NETWORK_TYPE_ENUM = `'${
-    NetworkType.IPV4 }' | '${
-    NetworkType.IPV6 }'`
-;
+export const NETWORK_TYPE_ENUM = `'${NetworkType.IPV4}' | '${
+    NetworkType.IPV6
+}'`;
 
 export function sizeOf(type: NetworkType): number {
     if (type === NetworkType.IPV6) {

@@ -19,9 +19,9 @@
  * purchase a proprietary commercial license. Please contact us at
  * <support@imqueue.com> to get commercial licensing options.
  */
-export * from './Networks';
-export * from './NetworkList';
-export * from './types';
-export * from './binary-list';
-export * from './cidr';
-export * from './ip-address';
+export * from './Networks.js';
+export * from './NetworkList.js';
+export * from './types/index.js';
+export * from './binary-list.js';
+export * from './cidr.js';
+export * from './ip-address.js';
