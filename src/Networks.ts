@@ -19,9 +19,9 @@
  * purchase a proprietary commercial license. Please contact us at
  * <support@imqueue.com> to get commercial licensing options.
  */
-import { NetworkList } from './NetworkList';
-import { getType } from './ip-address';
-import { NetworkType } from './types';
+import { NetworkList } from './NetworkList.js';
+import { getType } from './ip-address.js';
+import { NetworkType } from './types/index.js';
 
 export interface NetworksIntRanges {
     [NetworkType.IPV4]: [bigint, bigint][];
@@ -34,8 +34,8 @@ export interface NetworksIntRanges {
  * IPv4/IPv6 networks
  */
 export class Networks {
-    public readonly [NetworkType.IPV4]: NetworkList;
-    public readonly [NetworkType.IPV6]: NetworkList;
+    public readonly [NetworkType.IPV4]!: NetworkList;
+    public readonly [NetworkType.IPV6]!: NetworkList;
 
     /**
      * Constructor.
@@ -89,9 +89,9 @@ export class Networks {
                 const net = new NetworkList(v6, NetworkType.IPV6);
 
                 if (this[NetworkType.IPV6]) {
-                    const cidrList = this[NetworkType.IPV6].toArray().concat(
-                        net.toArray(),
-                    );
+                    const cidrList = this[NetworkType.IPV6]
+                        .toArray()
+                        .concat(net.toArray());
                     this[NetworkType.IPV6] = new NetworkList(
                         cidrList,
                         NetworkType.IPV6,
@@ -112,11 +112,13 @@ export class Networks {
     public includes(ip: string): boolean {
         switch (getType(ip)) {
             case NetworkType.IPV4:
-                return (!!this[NetworkType.IPV4] &&
+                return (
+                    !!this[NetworkType.IPV4] &&
                     this[NetworkType.IPV4].includes(ip)
                 );
             case NetworkType.IPV6:
-                return (!!this[NetworkType.IPV6] &&
+                return (
+                    !!this[NetworkType.IPV6] &&
                     this[NetworkType.IPV6].includes(ip)
                 );
         }

@@ -19,8 +19,8 @@
  * purchase a proprietary commercial license. Please contact us at
  * <support@imqueue.com> to get commercial licensing options.
  */
-import { NetworkType, sizeOf } from './types';
-import { getType, intToIp, ipToInt } from './ip-address';
+import { NetworkType, sizeOf } from './types/index.js';
+import { getType, intToIp, ipToInt } from './ip-address.js';
 
 // 0 - 32, 4-bytes integers, IPv4 masks
 // pre-cached masks for better performance during conversions
@@ -233,9 +233,9 @@ export function cidrToRange(
 ): [string, string] {
     type = getType(cidr, type);
 
-    const [start, end] = cidrToRangeInt(cidr, type)
-        .map(ip => intToIp(ip, type as NetworkType, canonical))
-    ;
+    const [start, end] = cidrToRangeInt(cidr, type).map(ip =>
+        intToIp(ip, type as NetworkType, canonical),
+    );
 
     return [start, end];
 }
@@ -289,7 +289,7 @@ export function intRangeToCidr(
     const one = BigInt(1);
     const two = BigInt(2);
 
-    while (end >= start ) {
+    while (end >= start) {
         let maxSize = typeSize;
 
         while (maxSize > 0) {
@@ -303,8 +303,8 @@ export function intRangeToCidr(
             maxSize--;
         }
 
-        const x = log2( end - start + one);
-        const maxDiff = (typeSize - Math.floor( x ) );
+        const x = log2(end - start + one);
+        const maxDiff = typeSize - Math.floor(x);
 
         if (maxSize < maxDiff) {
             maxSize = maxDiff;
@@ -345,4 +345,3 @@ export function rangeToCidr(
         canonical,
     );
 }
-

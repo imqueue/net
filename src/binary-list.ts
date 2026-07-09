@@ -19,9 +19,9 @@
  * purchase a proprietary commercial license. Please contact us at
  * <support@imqueue.com> to get commercial licensing options.
  */
-import { NetworkType, sizeOf } from './types';
-import { getType } from './ip-address';
-import { cidrToRangeInt, intRangeToCidr } from './cidr';
+import { NetworkType, sizeOf } from './types/index.js';
+import { getType } from './ip-address.js';
+import { cidrToRangeInt, intRangeToCidr } from './cidr.js';
 import { toBigIntLE, toBufferLE } from 'bigint-buffer';
 
 /**
@@ -36,12 +36,14 @@ export function toBinaryList(networks: string[], type?: NetworkType): Buffer {
     type = getType(networks[0], type);
 
     const buffers: Buffer[] = [];
-    const ranges = networks.map(network => cidrToRangeInt(network, type))
-    .filter((range, i, self) =>
-        self.findIndex(([start, end]) =>
-            start === range[0] && end === range[1],
-        ) === i,
-    );
+    const ranges = networks
+        .map(network => cidrToRangeInt(network, type))
+        .filter(
+            (range, i, self) =>
+                self.findIndex(
+                    ([start, end]) => start === range[0] && end === range[1],
+                ) === i,
+        );
 
     ranges.sort((a, b) =>
         // istanbul ignore next
