@@ -22,7 +22,7 @@
 import { NetworkType, sizeOf } from './types/index.js';
 import { getType, ipToInt } from './ip-address.js';
 import { toBinaryList, toIntArray, toStringArray } from './binary-list.js';
-import { toBigIntLE } from './bigint-le.js';
+import { toBigIntLE } from './bigint-buffer.js';
 
 /**
  * Class NetworkList
