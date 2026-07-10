@@ -22,6 +22,7 @@
 export * from './Networks.js';
 export * from './NetworkList.js';
 export * from './types/index.js';
+export * from './bigint-le.js';
 export * from './binary-list.js';
 export * from './cidr.js';
 export * from './ip-address.js';

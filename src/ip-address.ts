@@ -19,7 +19,7 @@
  * purchase a proprietary commercial license. Please contact us at
  * <support@imqueue.com> to get commercial licensing options.
  */
-import ipRegex from 'ip-regex';
+import { isIP, isIPv4, isIPv6 } from 'node:net';
 import { IPV6_MAX_STR_LEN, NetworkType } from './types/index.js';
 
 function invalid(ip: string) {
@@ -234,7 +234,7 @@ export function intToIp(
  * @return {boolean}
  */
 export function isValid(ip: string): boolean {
-    return ipRegex({ exact: true }).test(ip);
+    return isIP(ip) !== 0;
 }
 
 // istanbul ignore next
@@ -245,7 +245,7 @@ export function isValid(ip: string): boolean {
  * @return {boolean}
  */
 export function isValid4(ip: string): boolean {
-    return ipRegex.v4({ exact: true }).test(ip);
+    return isIPv4(ip);
 }
 
 // istanbul ignore next
@@ -256,7 +256,7 @@ export function isValid4(ip: string): boolean {
  * @return {boolean}
  */
 export function isValid6(ip: string): boolean {
-    return ipRegex.v6({ exact: true }).test(ip);
+    return isIPv6(ip);
 }
 
 // istanbul ignore next

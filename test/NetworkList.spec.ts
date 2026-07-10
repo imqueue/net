@@ -21,8 +21,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { NetworkList, NetworkType } from '../src/index.js';
-import { toBufferLE } from 'bigint-buffer';
+import { NetworkList, NetworkType, toBufferLE } from '../src/index.js';
 import ipv4mask32 from './data/ipv4-32.json' with { type: 'json' };
 
 describe('NetworkList', () => {
