@@ -9,7 +9,7 @@
         <img src="https://travis-ci.com/imqueue/net.svg?branch=master" alt="Build Status">
     </a>
     <a href="https://rawgit.com/imqueue/net/master/LICENSE">
-        <img src="https://img.shields.io/badge/license-ISC-blue.svg" alt="Coverage Status">
+        <img src="https://img.shields.io/badge/license-GPL-blue.svg" alt="License">
     </a>
 </div>
 <hr>
