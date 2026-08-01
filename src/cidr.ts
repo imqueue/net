@@ -22,8 +22,19 @@
 import { NetworkType, sizeOf } from './types/index.js';
 import { getType, intToIp, ipToInt } from './ip-address.js';
 
-// 0 - 32, 4-bytes integers, IPv4 masks
-// pre-cached masks for better performance during conversions
+/**
+ * The 33 IPv4 network masks, indexed by prefix length — `IPV4_MASKS[24]` is the
+ * mask for a `/24`.
+ *
+ * @remarks
+ * Precomputed rather than shifted per call, because a conversion does this on
+ * every record in a list. Index 0 is `0n` (a `/0`, matching everything) and index
+ * 32 is all ones (a single host), so the array is 33 entries and indexing it with
+ * a prefix length needs no adjustment.
+ *
+ * Exported as a plain array, so it is mutable — treat it as read-only. Reach for
+ * {@link masksOf} instead when the family is only known at run time.
+ */
 export const IPV4_MASKS = [
     0x00000000n,
     0x80000000n,
@@ -60,8 +71,15 @@ export const IPV4_MASKS = [
     0xffffffffn,
 ];
 
-// 0 - 128, 16 bytes integers, IPv6 masks
-// pre-cached masks for better performance during conversions
+/**
+ * The 129 IPv6 network masks, indexed by prefix length — `IPV6_MASKS[64]` is the
+ * mask for a `/64`.
+ *
+ * @remarks
+ * The IPv6 counterpart of {@link IPV4_MASKS}: index 0 is `0n` and index 128 is all
+ * ones, giving 129 entries. Same caveat — a mutable exported array that should be
+ * treated as read-only.
+ */
 export const IPV6_MASKS = [
     0x00000000000000000000000000000000n,
     0x80000000000000000000000000000000n,
@@ -195,12 +213,26 @@ export const IPV6_MASKS = [
 ];
 
 /**
- * Converts given CIDR network record to range of integer addresses,
- * [min, max] tuple
+ * Expands a CIDR record into the first and last address it covers, as integers.
  *
- * @param {string} cidr
- * @param {NetworkType} [type]
- * @return {[bigint, bigint]}
+ * @param cidr - a network in `address/prefix` form, e.g. `10.0.0.0/8`
+ * @param type - the family, if known; omit to have it detected from `cidr`
+ * @returns A `[first, last]` tuple. Both ends are inclusive, so a `/32` returns
+ * the same value twice.
+ *
+ * @throws TypeError if the address part is invalid or disagrees with `type`.
+ *
+ * @throws RangeError if there is no `/prefix`. A bare `10.0.0.1` makes the prefix
+ * `undefined`, which reaches `BigInt(NaN)` — so the failure surfaces as
+ * `Cannot convert NaN to a BigInt` rather than as a message about the record.
+ * This is why every network given to {@link Networks} needs an explicit prefix
+ * length, `/32` and `/128` included.
+ *
+ * @remarks
+ * Host bits in the address are cleared rather than rejected, so `10.0.0.5/8` is
+ * accepted and yields the same range as `10.0.0.0/8`. The prefix itself is not
+ * bounds-checked: a value above the family width produces a negative shift and
+ * throws from `BigInt`, and a negative one produces a nonsensical range.
  */
 export function cidrToRangeInt(
     cidr: string,
@@ -218,13 +250,24 @@ export function cidrToRangeInt(
 }
 
 /**
- * Converts given CIDR network notation to range of addresses,
- * [min, max] tuple.
+ * Expands a CIDR record into the first and last address it covers, as text.
  *
- * @param {string} cidr
- * @param {NetworkType} [type]
- * @param {boolean} [canonical]
- * @return {[string, string]}
+ * @param cidr - a network in `address/prefix` form
+ * @param type - the family, if known; omit to have it detected
+ * @param canonical - for IPv6, render the expanded form instead of the compressed
+ * one
+ * @returns A `[first, last]` tuple of addresses, both ends inclusive.
+ *
+ * @defaultValue `canonical` defaults to `false`
+ *
+ * @throws TypeError or RangeError exactly as {@link cidrToRangeInt} does — this is
+ * that function with {@link intToIp} applied to each end.
+ *
+ * @example
+ * ```typescript
+ * cidrToRange('10.0.0.0/8');        // ['10.0.0.0', '10.255.255.255']
+ * cidrToRange('2001:db8::/32');     // ['2001:db8::', '2001:db8:ffff:...:ffff']
+ * ```
  */
 export function cidrToRange(
     cidr: string,
@@ -241,10 +284,15 @@ export function cidrToRange(
 }
 
 /**
- * Returns array of masks ascending order for a given network type.
+ * The mask table for a family, indexable by prefix length.
  *
- * @param {NetworkType} type
- * @return {bigint[]}
+ * @param type - the address family
+ * @returns {@link IPV6_MASKS} for IPv6, otherwise {@link IPV4_MASKS}.
+ *
+ * @remarks
+ * Returns the shared array itself, not a copy, so mutating the result corrupts
+ * every later conversion. Like {@link sizeOf}, anything that is not exactly
+ * `IPV6` is treated as IPv4 rather than rejected.
  */
 export function masksOf(type: NetworkType): bigint[] {
     if (type === NetworkType.IPV6) {
@@ -267,14 +315,26 @@ function log2(n: bigint) {
 }
 
 /**
- * Converts given network range represented by integer start, end addresses
- * to minimal list of CIDR network notations required to represent the range.
+ * Covers an integer address range with the fewest CIDR records that fit it
+ * exactly.
  *
- * @param {bigint} start
- * @param {bigint} end
- * @param {NetworkType} type
- * @param {boolean} [canonical]
- * @return {string[]}
+ * @param start - first address in the range, inclusive
+ * @param end - last address in the range, inclusive
+ * @param type - which family the two integers belong to
+ * @param canonical - for IPv6, render expanded rather than compressed addresses
+ * @returns The records covering exactly `[start, end]` — no more and no less.
+ *
+ * @defaultValue `canonical` defaults to `false`
+ *
+ * @remarks
+ * The inverse of {@link cidrToRangeInt}, and not a one-to-one one: an arbitrary
+ * range rarely aligns to a single prefix, so this splits it into the minimal set
+ * that does. A range already on a prefix boundary comes back as one record.
+ *
+ * `type` is required here and cannot be inferred, for the same reason as in
+ * {@link intToIp} — the integers alone do not say which family they are. The
+ * range is not validated, so an `end` below `start` yields an empty list rather
+ * than an error.
  */
 export function intRangeToCidr(
     start: bigint,
@@ -321,14 +381,29 @@ export function intRangeToCidr(
 }
 
 /**
- * Converts given network range represented start, end addresses
- * to minimal list of CIDR network notations required to represent the range.
+ * Covers an address range with the fewest CIDR records that fit it exactly.
  *
- * @param {string} start
- * @param {string} end
- * @param {NetworkType} type
- * @param {boolean} [canonical]
- * @return {string[]}
+ * @param start - first address in the range, inclusive
+ * @param end - last address in the range, inclusive
+ * @param type - the family, if known; omit to have it detected from `start`
+ * @param canonical - for IPv6, render expanded rather than compressed addresses
+ * @returns The records covering exactly `[start, end]`.
+ *
+ * @defaultValue `canonical` defaults to `false`
+ *
+ * @throws TypeError if either address is invalid, or if `type` disagrees with
+ * `start`. Note that only `start` is checked against `type`, so a mismatched
+ * `end` is converted as whatever family `start` established.
+ *
+ * @remarks
+ * {@link intRangeToCidr} with both ends converted by {@link ipToInt} first — the
+ * same minimal-cover behaviour, taking text instead of integers.
+ *
+ * @example
+ * ```typescript
+ * rangeToCidr('10.0.0.0', '10.0.0.255');  // ['10.0.0.0/24']
+ * rangeToCidr('10.0.0.1', '10.0.0.2');    // ['10.0.0.1/32', '10.0.0.2/32']
+ * ```
  */
 export function rangeToCidr(
     start: string,

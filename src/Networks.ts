@@ -19,33 +19,106 @@
  * purchase a proprietary commercial license. Please contact us at
  * <support@imqueue.com> to get commercial licensing options.
  */
+import { Buffer } from 'node:buffer';
 import { NetworkList } from './NetworkList.js';
 import { getType } from './ip-address.js';
 import { NetworkType } from './types/index.js';
 
+/**
+ * Integer address ranges grouped by family, as returned by
+ * {@link Networks.toIntRanges}.
+ */
 export interface NetworksIntRanges {
+    /** IPv4 ranges, ascending by start address. Empty if the set has no IPv4. */
     [NetworkType.IPV4]: [bigint, bigint][];
+
+    /** IPv6 ranges, ascending by start address. Empty if the set has no IPv6. */
     [NetworkType.IPV6]: [bigint, bigint][];
 }
 
 /**
- * Class networks
- * Is a meta-class on top of NetworkList allowing to manipulate of mixed
- * IPv4/IPv6 networks
+ * A CIDR membership set covering both address families — the entry point for most
+ * callers.
+ *
+ * @remarks
+ * Give it a mixed list of CIDR records and it sorts them into one
+ * {@link NetworkList} per family, then dispatches each lookup to the list matching
+ * the address it is asked about. That indirection exists because the two families
+ * cannot share a buffer: an IPv6 record is 32 bytes against IPv4's 8.
+ *
+ * Lookups are O(log n) within a family. Instances are immutable, so extending a set
+ * means constructing a new one.
+ *
+ * A family with no networks is left unset rather than empty, and
+ * {@link Networks.includes} answers `false` for it — so a v4-only set safely
+ * answers questions about IPv6 addresses.
+ *
+ * @example
+ * ```typescript
+ * const allowed = new Networks(['10.0.0.0/8', '2001:db8::/32']);
+ *
+ * allowed.includes('10.1.2.3');     // true
+ * allowed.includes('2001:db8::1');  // true
+ * allowed.includes('8.8.8.8');      // false
+ * ```
  */
 export class Networks {
+    /**
+     * The IPv4 networks, as a {@link NetworkList} — reachable as `.ipv4`.
+     *
+     * @remarks
+     * Left unset when the set has no IPv4 networks, despite the non-null assertion
+     * in its declaration, so check it before use. {@link Networks.includes} already
+     * does. Its {@link NetworkList.networks} buffer is what the constructor's first
+     * argument accepts back.
+     */
     public readonly [NetworkType.IPV4]!: NetworkList;
+
+    /**
+     * The IPv6 networks, as a {@link NetworkList} — reachable as `.ipv6`.
+     *
+     * @remarks
+     * Unset when the set has no IPv6 networks, exactly as with
+     * {@link Networks.ipv4}. Its buffer goes back in through the constructor's
+     * `networks6` argument.
+     */
     public readonly [NetworkType.IPV6]!: NetworkList;
 
     /**
-     * Constructor.
-     * It accepts as first argument an array of networks CIDR string records or
-     * IPv4 binary buffer of network lists.
-     * Second argument is optional
+     * Builds a set from CIDR records of either family, or from previously packed
+     * buffers.
      *
-     * @param {string[] | Buffer} networks - CIDR list of networks or IPv4
-     *                                       list buffer
-     * @param {Buffer} [networks6] - buffer of IPv6 networks (optional)
+     * @param networks - a mixed array of CIDR records, each with an explicit
+     * `/prefix`; or a packed IPv4 buffer, in which case IPv6 must come via
+     * `networks6`
+     * @param networks6 - a packed IPv6 buffer. Usable alongside either form of
+     * `networks`.
+     *
+     * @throws TypeError if `networks6` is given but is not a Buffer, if any CIDR
+     * record's address is invalid, or if a buffer is empty or not a whole number of
+     * records.
+     *
+     * @throws RangeError if a CIDR record has no `/prefix` — a bare address is
+     * rejected, so a single host is `10.0.0.1/32` or `2001:db8::1/128`.
+     *
+     * @remarks
+     * The array form is the usual one, and it does the sorting for you: records are
+     * split by family, so the order you list them in does not matter. The buffer
+     * form is for restoring a set you packed earlier and reads `networks` as IPv4
+     * only — an IPv6 buffer passed as the first argument would be misread, so it
+     * belongs in `networks6`.
+     *
+     * An empty array yields a set with neither family populated, which answers
+     * `false` to everything rather than throwing.
+     *
+     * @example
+     * ```typescript
+     * // From records, mixed families in any order
+     * const a = new Networks(['2001:db8::/32', '10.0.0.0/8']);
+     *
+     * // Restored from packed buffers
+     * const b = new Networks(a.ipv4.networks, a.ipv6.networks);
+     * ```
      */
     public constructor(networks: string[] | Buffer, networks6?: Buffer) {
         if (networks6) {
@@ -104,10 +177,20 @@ export class Networks {
     }
 
     /**
-     * Checks if given ip address is in the list of known networks
+     * Whether an address falls inside any network in this set.
      *
-     * @param {string} ip
-     * @return {boolean}
+     * @param ip - a bare address of either family, with no `/prefix`
+     * @returns `true` if some network contains it.
+     *
+     * @throws TypeError if `ip` is not a valid address. An empty string throws
+     * rather than returning `false`, so screen untrusted input with
+     * {@link isValid} first — this is the call `@imqueue/http-protect` guards for
+     * that reason.
+     *
+     * @remarks
+     * Dispatches on the address's own family and asks only that list, so an IPv6
+     * lookup costs nothing on a v4-only set. A family this set has no networks for
+     * answers `false`.
      */
     public includes(ip: string): boolean {
         switch (getType(ip)) {
@@ -125,9 +208,14 @@ export class Networks {
     }
 
     /**
-     * Returns known networks big integer ranges definitions
+     * Every stored range as integer pairs, grouped by family.
      *
-     * @return {NetworksIntRanges}
+     * @returns An object with an `ipv4` and an `ipv6` array; a family with no
+     * networks gives an empty array rather than being absent.
+     *
+     * @remarks
+     * Decodes both buffers on every call, so treat it as an export path rather than
+     * something to use per lookup.
      */
     public toIntRanges(): NetworksIntRanges {
         return {
@@ -141,10 +229,20 @@ export class Networks {
     }
 
     /**
-     * Returns known networks as list of CIDR records
+     * Every stored network as CIDR records, IPv4 first.
      *
-     * @param {boolean} canonical
-     * @return {string[]}
+     * @param canonical - for IPv6, render the expanded form rather than the
+     * compressed one
+     * @returns One flat array covering both families, IPv4 records followed by IPv6.
+     *
+     * @defaultValue `canonical` defaults to `false`
+     *
+     * @remarks
+     * The result is a valid constructor argument, which makes this the readable way
+     * to round-trip a set. Not necessarily the records you built it from, though:
+     * each range is re-expressed as its minimal cover, so duplicates are gone and a
+     * range spanning several prefixes returns as several records. Addresses covered
+     * are identical either way.
      */
     public toArray(canonical: boolean = false): string[] {
         const v4arr = this[NetworkType.IPV4]
@@ -158,9 +256,15 @@ export class Networks {
     }
 
     /**
-     * Converts this object to JSON-serializable value
+     * The CIDR array, so `JSON.stringify` on this object yields the network set.
      *
-     * @return {string[]}
+     * @returns The same value as {@link Networks.toArray} with no arguments.
+     *
+     * @remarks
+     * The output can go straight back into the constructor, so
+     * `JSON.parse`/`new Networks` round-trips. Note that this flattens both families
+     * into one array — which is fine, because the constructor sorts them out again
+     * by inspecting each record.
      */
     public toJSON() {
         return this.toArray();

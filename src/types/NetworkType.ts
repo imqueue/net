@@ -21,15 +21,50 @@
  */
 import { IPV4_INT_SIZE, IPV6_INT_SIZE } from './constants.js';
 
+/**
+ * Which address family a value belongs to.
+ *
+ * @remarks
+ * Almost everything here is family-specific — address width, mask table, record
+ * size — so this is the argument that selects between the two. The values are the
+ * strings `'ipv4'` and `'ipv6'`, so they survive `JSON.stringify` and can come
+ * straight from configuration.
+ *
+ * {@link Networks} keeps one {@link NetworkList} per member of this enum rather
+ * than mixing families in one list, because their record sizes differ.
+ */
 export enum NetworkType {
+    /** IPv4 — 4-byte addresses, prefixes `/0` to `/32`. */
     IPV4 = 'ipv4',
+
+    /** IPv6 — 16-byte addresses, prefixes `/0` to `/128`. */
     IPV6 = 'ipv6',
 }
 
+/**
+ * The literal `"'ipv4' | 'ipv6'"`, for embedding a union of the
+ * {@link NetworkType} values in an error message.
+ *
+ * @remarks
+ * A string of TypeScript source, not a type — it exists so that a thrown message
+ * can list the accepted values without a second place to update when the enum
+ * changes.
+ */
 export const NETWORK_TYPE_ENUM = `'${NetworkType.IPV4}' | '${
     NetworkType.IPV6
 }'`;
 
+/**
+ * How many bytes one address of the given family occupies.
+ *
+ * @param type - the address family to size
+ * @returns 16 for {@link NetworkType.IPV6}, otherwise 4.
+ *
+ * @remarks
+ * Anything that is not exactly `IPV6` is treated as IPv4, so an unrecognised
+ * value silently sizes as IPv4 rather than throwing. Callers that need the input
+ * validated should check it themselves.
+ */
 export function sizeOf(type: NetworkType): number {
     if (type === NetworkType.IPV6) {
         return IPV6_INT_SIZE;

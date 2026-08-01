@@ -19,49 +19,102 @@
  * purchase a proprietary commercial license. Please contact us at
  * <support@imqueue.com> to get commercial licensing options.
  */
+import { Buffer } from 'node:buffer';
 import { NetworkType, sizeOf } from './types/index.js';
 import { getType, ipToInt } from './ip-address.js';
 import { toBinaryList, toIntArray, toStringArray } from './binary-list.js';
 import { toBigIntLE } from './bigint-buffer.js';
 
 /**
- * Class NetworkList
+ * A single-family list of networks, stored as sorted binary ranges and searched
+ * in O(log n).
  *
- * Implements fast and reliable binary network lists, supporting both
- * IPv4 & IPv6 protocols.
+ * @remarks
+ * One family per list — the record widths differ, so IPv4 and IPv6 cannot share a
+ * buffer. Reach for {@link Networks} unless you know the family up front; it holds
+ * one of these per family and dispatches on the address it is given.
  *
- * Network list data stored in a binary format and this class provides
- * binary search lookup functionality through the networks data, making required
- * network address lookups very quick. Complexity by time is O(log n) in a worst
- * case.
+ * Each network is one record of two addresses, start and end: 8 bytes for IPv4 and
+ * 32 for IPv6, so memory is linear in the number of networks and independent of how
+ * large each network is. Records are sorted at construction, which is what makes
+ * the binary search in {@link NetworkList.includes} valid.
  *
- * Binary format guarantee small memory usage. For IPv4 network lists it
- * will use 8 bytes per network, for IPv6 it will use 32 bytes per network to
- * store. Memory consuming is linear correspondingly to the number of networks
- * stored in the list.
+ * Instances are effectively immutable — every field is `readonly` and there is no
+ * method that adds or removes a network. Extending a list means constructing a new
+ * one.
  *
- * It does not allow to mix different types of networks, so if you need
- * mixed list you may need to utilize 2 separate lists for IPv4 & Ipv6 networks.
- * In general such split is a good solution as long as particular address
- * lookup occurs only within a certain network type during runtime.
- *
- * Objects of this type also supports JSON serialization, if it is needed for
- * some reason.
+ * `JSON.stringify` produces the CIDR array via {@link NetworkList.toJSON}, and that
+ * array can be passed straight back to the constructor. Passing the raw
+ * {@link NetworkList.networks} buffer works too, and is cheaper, but then the family
+ * must be supplied explicitly because the bytes do not record it.
  */
 export class NetworkList {
+    /**
+     * The packed records: `[start, end]` address pairs, little-endian, ascending.
+     *
+     * @remarks
+     * Held by reference, not copied, so this is the cheap way to persist or clone a
+     * list — hand it back to the constructor with {@link NetworkList."type"}. Do not
+     * mutate it; every lookup reads it directly and assumes it is still sorted.
+     */
     public readonly networks: Buffer;
+
+    /** The address family every record in this list belongs to. */
     public readonly type: NetworkType;
+
+    /** Size of {@link NetworkList.networks} in bytes. */
     public readonly bytesLength: number;
+
+    /**
+     * How many networks the list holds.
+     *
+     * @remarks
+     * Records, not bytes and not input records — computed as
+     * `bytesLength / recordSize`. It can be lower than the number of CIDR strings
+     * the constructor was given, because records covering the same range are
+     * deduplicated.
+     */
     public readonly length: number;
+
+    /**
+     * Bytes per record: two addresses, so 8 for IPv4 and 32 for IPv6.
+     */
     public readonly recordSize: number;
+
+    /**
+     * Bytes per address: 4 for IPv4, 16 for IPv6, per {@link sizeOf}.
+     */
     public readonly addressSize: number;
 
     /**
-     * Constructor.
-     * Instantiates NetworkList object.
+     * Builds a list from CIDR records, or adopts an already-packed buffer.
      *
-     * @param {string[] | Buffer} networks
-     * @param {NetworkType} type
+     * @param networks - CIDR records, each with an explicit `/prefix`; or a buffer
+     * previously taken from {@link NetworkList.networks}
+     * @param type - the address family. Optional only for the array form, where it
+     * is detected from the first record; required for the buffer form, since the
+     * bytes do not say.
+     *
+     * @throws TypeError if a record's address is invalid, if the records disagree
+     * on family, or — for the buffer form — if `type` was omitted or the buffer is
+     * empty or not a whole number of records.
+     *
+     * @throws RangeError if a record has no `/prefix`. A bare address is rejected,
+     * so a single host is `10.0.0.1/32`.
+     *
+     * @remarks
+     * The array form sorts and deduplicates by range, so the resulting
+     * {@link NetworkList.length} may be lower than the number of records you
+     * passed. The buffer form trusts the bytes and copies nothing — it keeps a
+     * reference, so mutating that buffer afterwards corrupts the list.
+     *
+     * @example
+     * ```typescript
+     * const list = new NetworkList(['10.0.0.0/8', '192.168.0.0/16']);
+     *
+     * // Cheap round trip: keep the bytes, restate the family.
+     * const same = new NetworkList(list.networks, list.type);
+     * ```
      */
     public constructor(networks: string[] | Buffer, type?: NetworkType) {
         const invalidList = 'Given network list is invalid!';
@@ -78,16 +131,31 @@ export class NetworkList {
 
         this.type = type as NetworkType;
         this.bytesLength = this.networks.byteLength;
-        this.length = networks.length;
         this.addressSize = sizeOf(type as NetworkType);
         this.recordSize = this.addressSize * 2;
+        // Derived from the stored bytes, never from the constructor argument. A
+        // Buffer's `length` is its byte count, and an array's is its element
+        // count before duplicate ranges are dropped — both overstate how many
+        // records exist, and includes() uses this as its binary-search bound, so
+        // an overstatement makes it probe past the end and miss real records.
+        this.length = this.bytesLength / this.recordSize;
     }
 
     /**
-     * Checks if a given network address is a part of this network list.
+     * Whether an address falls inside any network in this list.
      *
-     * @param {string} ip
-     * @return {boolean}
+     * @param ip - a bare address, with no `/prefix`
+     * @returns `true` if some network contains it.
+     *
+     * @throws TypeError if `ip` is not a valid address — an empty string included.
+     * Screen untrusted input with {@link isValid} first.
+     *
+     * @remarks
+     * Binary search over the sorted records, so O(log n) in the number of networks.
+     * An address of the other family returns `false` rather than throwing, which is
+     * what lets {@link Networks} ask both of its lists without checking first.
+     *
+     * Ranges are inclusive at both ends, so a `/32` matches exactly its one address.
      */
     public includes(ip: string) {
         const type = getType(ip);
@@ -98,9 +166,9 @@ export class NetworkList {
 
         const intIp = ipToInt(ip, type);
 
-        // binary search
+        // binary search over record indices, so the last one is length - 1
         let start = 0;
-        let end = this.length;
+        let end = this.length - 1;
 
         while (start <= end) {
             let mid = Math.floor((start + end) / 2);
@@ -138,22 +206,32 @@ export class NetworkList {
     }
 
     /**
-     * Converts this network list representation to an array of integer
-     * ranges of network addresses.
+     * The stored ranges as integer pairs.
      *
-     * @return {[bigint, bigint][]}
+     * @returns One `[start, end]` tuple per record, ascending by start address.
+     *
+     * @remarks
+     * Decodes the whole buffer on every call rather than caching, so it is a
+     * debugging and export aid, not something to call per lookup.
      */
     public toIntArray() {
         return toIntArray(this.networks, this.type as NetworkType);
     }
 
     /**
-     * Converts this network list representation to an array of CIDR records.
-     * If canonical passed as true - will present IPv6 addresses in full
-     * canonical unpacked form.
+     * The stored networks as CIDR records.
      *
-     * @param {boolean} [canonical]
-     * @return {string[]}
+     * @param canonical - for IPv6, render the expanded form rather than the
+     * compressed one
+     * @returns CIDR records covering exactly the same addresses as this list.
+     *
+     * @defaultValue `canonical` defaults to `false`
+     *
+     * @remarks
+     * Not necessarily the records you constructed with. Each stored range is
+     * re-expressed as its minimal cover, so duplicates are gone and a range that
+     * does not align to one prefix comes back as several records. The addresses
+     * covered are identical; the record list need not be.
      */
     public toArray(canonical: boolean = false) {
         return toStringArray(
@@ -164,10 +242,15 @@ export class NetworkList {
     }
 
     /**
-     * Implements JSON serializable value representing this network list.
-     * Actually it refers to this.toArray() implementation.
+     * The CIDR array, so `JSON.stringify` on this object yields the network list.
      *
-     * @return {string[]}
+     * @returns The same value as {@link NetworkList.toArray} with no arguments,
+     * i.e. compressed IPv6.
+     *
+     * @remarks
+     * The result can be handed straight back to the constructor, which makes
+     * `JSON.parse`/`new NetworkList` a working round trip — lossless in addresses
+     * covered, though not necessarily in record count.
      */
     public toJSON() {
         return this.toArray();
