@@ -383,4 +383,88 @@ describe('NetworkList', () => {
             );
         });
     });
+    // `length` is the binary-search upper bound in includes(), so getting it
+    // wrong does not throw — the search walks off the end of the buffer, reads
+    // the missing bytes as (0n, 0n), and every such probe pushes the search
+    // right, abandoning the real records. The result is a silent false negative
+    // on a membership test.
+    describe('length', () => {
+        it('should count records, not bytes, when built from a buffer', () => {
+            const source = new NetworkList(
+                ['10.0.0.0/8', '192.168.0.0/16'],
+                NetworkType.IPV4,
+            );
+            const rebuilt = new NetworkList(source.networks, NetworkType.IPV4);
+
+            assert.equal(rebuilt.length, 2, 'two records, not 16 bytes');
+            assert.equal(rebuilt.bytesLength, 16);
+        });
+
+        it('should count records, not input strings, when ranges dedupe', () => {
+            // All three describe the same range, so one record is stored.
+            const list = new NetworkList(
+                ['10.0.0.0/8', '10.0.0.5/8', '10.0.0.9/8'],
+                NetworkType.IPV4,
+            );
+
+            assert.equal(list.length, 1, 'one record, not three inputs');
+            assert.equal(list.bytesLength, 8);
+        });
+
+        it('should agree with bytesLength and recordSize', () => {
+            for (const [networks, type] of [
+                [['10.0.0.0/8', '192.168.0.0/16'], NetworkType.IPV4],
+                [['2001:db8::/32', '2002::/16'], NetworkType.IPV6],
+            ] as [string[], NetworkType][]) {
+                const list = new NetworkList(networks, type);
+
+                assert.equal(list.length, list.bytesLength / list.recordSize);
+            }
+        });
+    });
+
+    describe('includes() after a round trip', () => {
+        it('should still match a member when rebuilt from its own buffer', () => {
+            const source = new NetworkList(
+                ['10.0.0.0/8', '192.168.0.0/16'],
+                NetworkType.IPV4,
+            );
+            const rebuilt = new NetworkList(source.networks, NetworkType.IPV4);
+
+            for (const ip of ['10.1.2.3', '10.0.0.0', '192.168.1.1']) {
+                assert.equal(rebuilt.includes(ip), true, `${ip} must match`);
+            }
+            assert.equal(rebuilt.includes('8.8.8.8'), false);
+        });
+
+        it('should still match a member when duplicate ranges were given', () => {
+            const list = new NetworkList(
+                ['10.0.0.0/8', '10.0.0.5/8', '192.168.0.0/16'],
+                NetworkType.IPV4,
+            );
+
+            assert.equal(list.includes('10.1.2.3'), true);
+            assert.equal(list.includes('192.168.1.1'), true);
+            assert.equal(list.includes('8.8.8.8'), false);
+        });
+
+        it('should match every member of a larger round-tripped list', () => {
+            const cidrs = Array.from(
+                { length: 64 },
+                (_, i) => `${10 + i}.0.0.0/8`,
+            );
+            const rebuilt = new NetworkList(
+                new NetworkList(cidrs, NetworkType.IPV4).networks,
+                NetworkType.IPV4,
+            );
+
+            for (let i = 0; i < 64; i++) {
+                assert.equal(
+                    rebuilt.includes(`${10 + i}.1.2.3`),
+                    true,
+                    `${10 + i}.1.2.3 must match`,
+                );
+            }
+        });
+    });
 });
