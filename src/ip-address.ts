@@ -27,11 +27,23 @@ function invalid(ip: string) {
 }
 
 /**
- * Ensures type is set for given address
+ * Determines an address's family, or verifies the one you claim it has.
  *
- * @param {string} ip
- * @param {NetworkType} [type]
- * @return {NetworkType}
+ * @param ip - the address to inspect
+ * @param type - the family you expect; omit to have it detected
+ * @returns The family the address belongs to. When `type` was supplied and
+ * matches, that same value comes back.
+ *
+ * @throws TypeError if `ip` is empty, if it contains neither `:` nor `.` so no
+ * family can be detected, if `type` is not a {@link NetworkType}, or if `type`
+ * disagrees with the address.
+ *
+ * @remarks
+ * Detection is by punctuation only — a `:` means IPv6 and a `.` means IPv4, with
+ * `:` winning, which is what classifies the IPv4-mapped form `::ffff:1.2.3.4` as
+ * IPv6. It does not check that the address is well formed, so
+ * `getType('1.2.3.999')` returns `IPV4` quite happily; use {@link validate} or
+ * {@link isValid} for that.
  */
 export function getType(ip: string, type?: NetworkType): NetworkType {
     if (!ip) {
@@ -60,10 +72,16 @@ export function getType(ip: string, type?: NetworkType): NetworkType {
 }
 
 /**
- * Converts binary integer representation string to big integer
+ * Reads a string of `'0'` and `'1'` as an unsigned `bigint`.
  *
- * @param {string} binStr
- * @return {bigint}
+ * @param binStr - big-endian binary digits, most significant first
+ * @returns The value they encode. An empty string gives `0n`.
+ *
+ * @remarks
+ * Only `'1'` contributes: any other character at a position — including `'0'`,
+ * a space or a letter — is treated as a zero bit rather than rejected. So this
+ * silently accepts input it cannot represent, and is meant for strings this
+ * package produced.
  */
 export function binToDec(binStr: string): bigint {
     const lastIndex = binStr.length - 1;
@@ -83,10 +101,17 @@ const RX_IPV6_PACK = /\b:?(?:0+:?){2,}/;
 const RX_IPV6_TUNNELS_CLEAN = /\./g;
 
 /**
- * Packs and returns most possible compact IPv6 address representation
+ * Compresses an IPv6 address: drops leading zeros from each group and collapses
+ * the longest run of zero groups to `::`.
  *
- * @param {string} ip
- * @return {string}
+ * @param ip - a full or partly compressed IPv6 address
+ * @returns The compressed form, e.g. `2001:0db8:0000:0000:0000:0000:0000:0001`
+ * becomes `2001:db8::1`.
+ *
+ * @remarks
+ * The inverse of {@link ipv6Unpack}, and what this package emits when producing
+ * IPv6 text. It is a string transformation with no validation, so a malformed
+ * input produces malformed output rather than an error.
  */
 export function ipv6Pack(ip: string): string {
     return ip
@@ -101,10 +126,24 @@ export function ipv6Pack(ip: string): string {
 }
 
 /**
- * Returns full canonical representation of IPv6 address
+ * Expands an IPv6 address to its full eight-group, four-digit form.
  *
- * @param {string} ip
- * @return {string}
+ * @param ip - an IPv6 address, compressed or not
+ * @returns The 39-character canonical form, e.g. `2001:db8::1` becomes
+ * `2001:0db8:0000:0000:0000:0000:0000:0001`.
+ *
+ * @throws TypeError if the address contains more than one `::`.
+ *
+ * @remarks
+ * The inverse of {@link ipv6Pack}, and the form {@link ipToInt} needs before it
+ * can read the groups as bytes. An input already
+ * {@link IPV6_MAX_STR_LEN} characters long is returned untouched on the
+ * assumption it is already expanded.
+ *
+ * Dots are rewritten to colons first, so the IPv4-mapped form
+ * `::ffff:1.2.3.4` expands without failing — but its trailing octets are treated
+ * as hex groups, not as a dotted quad, so the result is not the address a reader
+ * would expect. Convert mapped addresses yourself if the exact value matters.
  */
 export function ipv6Unpack(ip: string): string {
     if (ip.length === IPV6_MAX_STR_LEN) {
@@ -142,11 +181,21 @@ export function ipv6Unpack(ip: string): string {
 }
 
 /**
- * Converts given address to big integer representation
+ * Converts an address to the unsigned `bigint` this package compares with.
  *
- * @param {string} ip
- * @param {NetworkType} [type]
- * @return {bigint}
+ * @param ip - the address to convert
+ * @param type - the family, if you already know it; omit to have it detected
+ * @returns The address as a single integer — 32 bits of range for IPv4, 128 for
+ * IPv6.
+ *
+ * @throws TypeError if the address is not valid, or if `type` disagrees with it.
+ *
+ * @remarks
+ * The bridge between text and every numeric operation here: ranges, sorting and
+ * binary search all work on these values. Because the two families are converted
+ * into the same unsigned space and IPv4 occupies only its low 32 bits, values
+ * from different families must never be compared — which is why
+ * {@link Networks} keeps them apart.
  */
 export function ipToInt(ip: string, type?: NetworkType): bigint {
     validate(ip);
@@ -182,12 +231,24 @@ export function ipToInt(ip: string, type?: NetworkType): bigint {
 }
 
 /**
- * Converts big integer address representation to it's string canonical form
+ * Renders an integer address back to text.
  *
- * @param {bigint} intIp
- * @param {NetworkType} type
- * @param {boolean} [canonical]
- * @return {string}
+ * @param intIp - the address as produced by {@link ipToInt}
+ * @param type - which family to render it as; the integer alone does not say
+ * @param canonical - for IPv6, emit the full expanded form instead of the
+ * compressed one. Ignored for IPv4, which has only one form.
+ * @returns Dotted-quad for IPv4, colon-hex for IPv6.
+ *
+ * @defaultValue `canonical` defaults to `false`, i.e. compressed IPv6
+ *
+ * @remarks
+ * The inverse of {@link ipToInt}, but `type` is not optional here and cannot be
+ * inferred: the same integer is a valid address in both families, so passing the
+ * wrong one yields a plausible, wrong address rather than an error.
+ *
+ * There is no range check either. A value wider than the family renders from
+ * whatever bits fall in each group's position, so an IPv6-sized integer rendered
+ * as IPv4 silently produces nonsense.
  */
 export function intToIp(
     intIp: bigint,
@@ -227,11 +288,16 @@ export function intToIp(
 
 // istanbul ignore next
 /**
- * Returns true if given IP valid network address (IPv4 or IPv6), false -
- * otherwise
+ * Whether a string is a valid IPv4 or IPv6 address.
  *
- * @param {string} ip
- * @return {boolean}
+ * @param ip - the string to test
+ * @returns `true` for a valid address of either family.
+ *
+ * @remarks
+ * Node's own `net.isIP`, so it accepts a bare address only — `''`, `'unknown'`
+ * and `'10.0.0.0/8'` are all `false`, because a prefix length makes it a CIDR
+ * record rather than an address. Use this to screen untrusted input before
+ * {@link Networks}, whose constructor throws on anything it cannot parse.
  */
 export function isValid(ip: string): boolean {
     return isIP(ip) !== 0;
@@ -239,10 +305,14 @@ export function isValid(ip: string): boolean {
 
 // istanbul ignore next
 /**
- * Returns true if given IP is a valid IPv4 network address, false - otherwise
+ * Whether a string is a valid IPv4 address.
  *
- * @param {string} ip
- * @return {boolean}
+ * @param ip - the string to test
+ * @returns `true` only for IPv4; a valid IPv6 address gives `false`.
+ *
+ * @remarks
+ * Node's `net.isIPv4`. Note that the IPv4-mapped form `::ffff:1.2.3.4` is IPv6 as
+ * far as this is concerned.
  */
 export function isValid4(ip: string): boolean {
     return isIPv4(ip);
@@ -250,10 +320,13 @@ export function isValid4(ip: string): boolean {
 
 // istanbul ignore next
 /**
- * Returns true if given IP is a valid IPv6 network address, false - otherwise
+ * Whether a string is a valid IPv6 address.
  *
- * @param {string} ip
- * @return {boolean}
+ * @param ip - the string to test
+ * @returns `true` only for IPv6; a valid IPv4 address gives `false`.
+ *
+ * @remarks
+ * Node's `net.isIPv6`, so the IPv4-mapped form `::ffff:1.2.3.4` counts as IPv6.
  */
 export function isValid6(ip: string): boolean {
     return isIPv6(ip);
@@ -261,9 +334,17 @@ export function isValid6(ip: string): boolean {
 
 // istanbul ignore next
 /**
- * If given address is not valid address (v4 or v6) - throws an error
+ * Asserts that a string is a valid address of either family.
  *
- * @param {string} ip
+ * @param ip - the string to check
+ * @returns Nothing. It either passes or throws.
+ *
+ * @throws TypeError `'Given network address "<ip>" is invalid!'`
+ *
+ * @remarks
+ * The throwing counterpart of {@link isValid}, used internally before conversion.
+ * Prefer {@link isValid} when a bad address is an expected input rather than a
+ * programming error.
  */
 export function validate(ip: string) {
     if (!isValid(ip)) {
@@ -273,9 +354,13 @@ export function validate(ip: string) {
 
 // istanbul ignore next
 /**
- * If given address is not valid IPv4 address - throws an error
+ * Asserts that a string is a valid IPv4 address.
  *
- * @param {string} ip
+ * @param ip - the string to check
+ * @returns Nothing. It either passes or throws.
+ *
+ * @throws TypeError `'Given network address "<ip>" is invalid!'` — including for a
+ * valid IPv6 address.
  */
 export function validate4(ip: string) {
     if (!isValid4(ip)) {
@@ -285,9 +370,13 @@ export function validate4(ip: string) {
 
 // istanbul ignore next
 /**
- * If given address is not valid IPv6 address - throws an error
+ * Asserts that a string is a valid IPv6 address.
  *
- * @param {string} ip
+ * @param ip - the string to check
+ * @returns Nothing. It either passes or throws.
+ *
+ * @throws TypeError `'Given network address "<ip>" is invalid!'` — including for a
+ * valid IPv4 address.
  */
 export function validate6(ip: string) {
     if (!isValid6(ip)) {

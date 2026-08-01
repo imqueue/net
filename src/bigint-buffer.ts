@@ -3,11 +3,22 @@
  * Implemented to avoid dependency on vulnerable bigint-buffer package.
  */
 
+import { Buffer } from 'node:buffer';
+
 /**
- * Converts a little-endian buffer to a bigint value.
+ * Reads a little-endian byte sequence as an unsigned `bigint`.
  *
- * @param {Buffer | Uint8Array} buf
- * @return {bigint}
+ * @param buf - the bytes to read, least significant first
+ * @returns The value they encode. An empty input gives `0n`.
+ *
+ * @remarks
+ * Always unsigned — there is no sign bit and no length limit, so a 16-byte IPv6
+ * address reads as a plain positive integer. That is what lets one comparison
+ * path serve both families.
+ *
+ * Little-endian is the convention this package writes with
+ * ({@link toBufferLE}), so the pair round-trips. Reading a big-endian buffer with
+ * it returns a byte-reversed value rather than an error.
  */
 export function toBigIntLE(buf: Buffer | Uint8Array): bigint {
     const bytes = buf instanceof Buffer ? buf : Buffer.from(buf);
@@ -21,12 +32,20 @@ export function toBigIntLE(buf: Buffer | Uint8Array): bigint {
 }
 
 /**
- * Converts a bigint value to a little-endian buffer of a given size.
- * Throws if the value does not fit into the requested size or is negative.
+ * Writes an unsigned `bigint` as a little-endian buffer of an exact size.
  *
- * @param {bigint} value
- * @param {number} size - number of bytes in the resulting buffer
- * @return {Buffer}
+ * @param value - a non-negative value to encode
+ * @param size - bytes in the resulting buffer; the result is always this long
+ * @returns A new buffer of exactly `size` bytes, zero-padded at the high end.
+ *
+ * @throws RangeError if `size` is not a positive integer, if `value` is negative,
+ * or if `value` needs more than `size` bytes. The size check happens after the
+ * bytes are written, so it catches overflow rather than silently truncating.
+ *
+ * @remarks
+ * The inverse of {@link toBigIntLE}. Fixed width is the point: a network record
+ * holds two addresses at a known offset, so every address must occupy
+ * {@link sizeOf} bytes whatever its magnitude.
  */
 export function toBufferLE(value: bigint, size: number): Buffer {
     if (!Number.isInteger(size) || size <= 0) {

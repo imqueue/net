@@ -19,18 +19,37 @@
  * purchase a proprietary commercial license. Please contact us at
  * <support@imqueue.com> to get commercial licensing options.
  */
+import { Buffer } from 'node:buffer';
 import { NetworkType, sizeOf } from './types/index.js';
 import { getType } from './ip-address.js';
 import { cidrToRangeInt, intRangeToCidr } from './cidr.js';
 import { toBigIntLE, toBufferLE } from './bigint-buffer.js';
 
 /**
- * Converts given array of CIDR networks to binary format, where all networks
- * represented by min/max integer addresses sorted in ascending order.
+ * Packs CIDR records into the sorted binary form that lookups binary-search over.
  *
- * @param {string[]} networks
- * @param {NetworkType} [type]
- * @return {Buffer}
+ * @param networks - CIDR records, each needing an explicit `/prefix`
+ * @param type - the family, if known; omit to have it detected from the first
+ * record
+ * @returns A buffer of `[start, end]` address pairs, little-endian, ascending by
+ * start address. Two addresses of {@link sizeOf} bytes per record.
+ *
+ * @throws TypeError if a record's address is invalid or belongs to another family
+ * than the first one.
+ *
+ * @throws RangeError if a record has no `/prefix` — see {@link cidrToRangeInt}.
+ *
+ * @remarks
+ * Three things happen here that the caller can observe. Ranges are deduplicated,
+ * so two records covering the same range yield one entry — note that this compares
+ * ranges, not text, so `10.0.0.0/8` and `10.0.0.5/8` count as duplicates. They are
+ * then sorted, which is the precondition {@link NetworkList} relies on for binary
+ * search. And the family is taken from `networks[0]`, so an empty array reaches
+ * {@link getType} as `undefined` and throws.
+ *
+ * Overlapping ranges are kept as they are rather than merged, so a list can hold
+ * a network and a subnet of it. That costs a little space but never affects the
+ * answer.
  */
 export function toBinaryList(networks: string[], type?: NetworkType): Buffer {
     type = getType(networks[0], type);
@@ -60,12 +79,18 @@ export function toBinaryList(networks: string[], type?: NetworkType): Buffer {
 }
 
 /**
- * Converts given binary network list to an array of integer min/max addresses
- * tuples.
+ * Unpacks a binary list back into integer address ranges.
  *
- * @param {Buffer} list
- * @param {NetworkType} type
- * @return {[bigint, bigint][]}
+ * @param list - a buffer produced by {@link toBinaryList}
+ * @param type - which family the buffer holds; the bytes do not say
+ * @returns One `[start, end]` tuple per record, in stored order — which is
+ * ascending, since {@link toBinaryList} sorted them.
+ *
+ * @remarks
+ * Reads fixed-width records, so `type` must match what was written: unpacking an
+ * IPv4 buffer as IPv6 does not fail, it silently reinterprets four 4-byte
+ * addresses as one 16-byte pair. A trailing partial record is read as though the
+ * missing bytes were zero rather than rejected.
  */
 export function toIntArray(
     list: Buffer,
@@ -86,12 +111,21 @@ export function toIntArray(
 }
 
 /**
- * Converts given binary list to an array of CIDR string records.
+ * Unpacks a binary list back into CIDR text.
  *
- * @param {Buffer} list
- * @param {NetworkType} type
- * @param {boolean} canonical
- * @return {string[]}
+ * @param list - a buffer produced by {@link toBinaryList}
+ * @param type - which family the buffer holds
+ * @param canonical - for IPv6, render expanded rather than compressed addresses
+ * @returns CIDR records covering the same addresses as the buffer.
+ *
+ * @defaultValue `canonical` defaults to `false`
+ *
+ * @remarks
+ * Not necessarily the records you packed. Each stored range is re-expressed as its
+ * minimal cover by {@link intRangeToCidr}, so a range that came from one record
+ * comes back as one record, but a range that does not align to a single prefix
+ * comes back as several. Round-tripping is therefore lossless in addresses covered
+ * and not in record count.
  */
 export function toStringArray(
     list: Buffer,
