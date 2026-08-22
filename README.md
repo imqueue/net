@@ -5,10 +5,13 @@
     </a>
 </h1>
 <div align="center">
-    <a href="https://app.travis-ci.com/github/imqueue/net">
-        <img src="https://travis-ci.com/imqueue/net.svg?branch=master" alt="Build Status">
+    <a href="https://github.com/imqueue/net/actions/workflows/build.yml">
+        <img src="https://img.shields.io/github/actions/workflow/status/imqueue/net/build.yml" alt="Build Status">
     </a>
-    <a href="https://rawgit.com/imqueue/net/master/LICENSE">
+    <a href="https://www.npmjs.com/package/@imqueue/net">
+        <img src="https://img.shields.io/npm/v/@imqueue/net" alt="npm version">
+    </a>
+    <a href="https://github.com/imqueue/net/blob/master/LICENSE">
         <img src="https://img.shields.io/badge/license-GPL-blue.svg" alt="License">
     </a>
 </div>
@@ -20,6 +23,10 @@
     </strong>
 </p>
 <hr>
+
+**Using an AI assistant?** Point it at [imqueue.org/llms.txt](https://imqueue.org/llms.txt)
+for a machine-readable index of the docs. Current version, licence and Node floor
+for every package: [imqueue.org/status.json](https://imqueue.org/status.json).
 
 ## What Is This?
 
