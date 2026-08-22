@@ -44,7 +44,7 @@
   "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "git://github.com/imqueue/net.git"
+    "url": "git+https://github.com/imqueue/net.git"
   },
   "bugs": {
     "url": "https://github.com/imqueue/net/issues"
