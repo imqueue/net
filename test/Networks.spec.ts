@@ -226,13 +226,37 @@ describe('Networks', () => {
             assert.equal(list.includes('dead::beef'), false);
             assert.equal(list.includes('173.16.1.1'), false);
         });
+
+        // A subnet listed beside its supernet is a natural thing to write in a
+        // hand-maintained allow-list, and it used to cost the supernet its
+        // reach: binary search over overlapping ranges would step past
+        // 10.0.0.0/8 and answer false for an address it covers.
+        it('should return true when a subnet is listed beside its supernet', () => {
+            const overlapping = new Networks([
+                '192.168.0.0/16',
+                '10.0.0.0/8',
+                '10.1.0.0/16',
+                '2001:db8::/32',
+                '2001:db8:1::/48',
+                '2002::/16',
+            ]);
+
+            assert.equal(overlapping.includes('10.9.9.9'), true);
+            assert.equal(overlapping.includes('2001:db8:9999::1'), true);
+            assert.equal(overlapping.includes('11.9.9.9'), false);
+            assert.equal(overlapping.includes('2003::1'), false);
+        });
     });
 
     describe('toJSON()', () => {
         it('should be JSON-serializable', () => {
+            // A /16 rather than the /3 this used to carry: 2000::/3 spans
+            // 2000:: through 3fff:…, so it contains the other two records and
+            // they coalesce away, leaving nothing for the index arithmetic
+            // below to address.
             const list = new Networks(
                 ipv4mask32.concat([
-                    '2000:0000:0000:0000:0000:0000:0000:0000/3',
+                    '2000:0000:0000:0000:0000:0000:0000:0000/16',
                     '2001:0800:0000:0000:0000:0000:0000:0000/21',
                     '2002:0000:0000:1234:0000:0000:0000:0000/64',
                 ]),

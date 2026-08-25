@@ -103,10 +103,11 @@ export class Networks {
      *
      * @remarks
      * The array form is the usual one, and it does the sorting for you: records are
-     * split by family, so the order you list them in does not matter. The buffer
-     * form is for restoring a set you packed earlier and reads `networks` as IPv4
-     * only — an IPv6 buffer passed as the first argument would be misread, so it
-     * belongs in `networks6`.
+     * split by family, then sorted and coalesced within each, so the order you list
+     * them in does not matter and neither does listing a network beside a subnet of
+     * it. The buffer form is for restoring a set you packed earlier and reads
+     * `networks` as IPv4 only — an IPv6 buffer passed as the first argument would be
+     * misread, so it belongs in `networks6`.
      *
      * An empty array yields a set with neither family populated, which answers
      * `false` to everything rather than throwing.
@@ -240,9 +241,11 @@ export class Networks {
      * @remarks
      * The result is a valid constructor argument, which makes this the readable way
      * to round-trip a set. Not necessarily the records you built it from, though:
-     * each range is re-expressed as its minimal cover, so duplicates are gone and a
-     * range spanning several prefixes returns as several records. Addresses covered
-     * are identical either way.
+     * overlapping records were coalesced when the set was built, so a supernet
+     * listed beside a subnet of it returns as just the supernet, and each stored
+     * range is re-expressed as its minimal cover, so a range spanning several
+     * prefixes returns as several records. Addresses covered are identical either
+     * way.
      */
     public toArray(canonical: boolean = false): string[] {
         const v4arr = this[NetworkType.IPV4]

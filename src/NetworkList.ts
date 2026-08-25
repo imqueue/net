@@ -26,8 +26,8 @@ import { toBinaryList, toIntArray, toStringArray } from './binary-list.js';
 import { toBigIntLE } from './bigint-buffer.js';
 
 /**
- * A single-family list of networks, stored as sorted binary ranges and searched
- * in O(log n).
+ * A single-family list of networks, stored as sorted, disjoint binary ranges and
+ * searched in O(log n).
  *
  * @remarks
  * One family per list — the record widths differ, so IPv4 and IPv6 cannot share a
@@ -36,8 +36,10 @@ import { toBigIntLE } from './bigint-buffer.js';
  *
  * Each network is one record of two addresses, start and end: 8 bytes for IPv4 and
  * 32 for IPv6, so memory is linear in the number of networks and independent of how
- * large each network is. Records are sorted at construction, which is what makes
- * the binary search in {@link NetworkList.includes} valid.
+ * large each network is. Records are sorted and coalesced at construction, which is
+ * what makes the binary search in {@link NetworkList.includes} valid — that search
+ * needs the stored ranges to be both ordered and disjoint, so a network listed
+ * beside a subnet of it is stored as the one range covering both.
  *
  * Instances are effectively immutable — every field is `readonly` and there is no
  * method that adds or removes a network. Extending a list means constructing a new
@@ -55,7 +57,8 @@ export class NetworkList {
      * @remarks
      * Held by reference, not copied, so this is the cheap way to persist or clone a
      * list — hand it back to the constructor with {@link NetworkList."type"}. Do not
-     * mutate it; every lookup reads it directly and assumes it is still sorted.
+     * mutate it; every lookup reads it directly and assumes it is still sorted and
+     * free of overlaps.
      */
     public readonly networks: Buffer;
 
@@ -71,8 +74,8 @@ export class NetworkList {
      * @remarks
      * Records, not bytes and not input records — computed as
      * `bytesLength / recordSize`. It can be lower than the number of CIDR strings
-     * the constructor was given, because records covering the same range are
-     * deduplicated.
+     * the constructor was given, because overlapping ranges are coalesced: exact
+     * duplicates collapse, and so does a network listed beside a subnet of it.
      */
     public readonly length: number;
 
@@ -103,10 +106,11 @@ export class NetworkList {
      * so a single host is `10.0.0.1/32`.
      *
      * @remarks
-     * The array form sorts and deduplicates by range, so the resulting
+     * The array form sorts by range and coalesces overlaps, so the resulting
      * {@link NetworkList.length} may be lower than the number of records you
-     * passed. The buffer form trusts the bytes and copies nothing — it keeps a
-     * reference, so mutating that buffer afterwards corrupts the list.
+     * passed — `['10.0.0.0/8', '10.1.0.0/16']` is one record, not two. The buffer
+     * form trusts the bytes and copies nothing — it keeps a reference, so mutating
+     * that buffer afterwards corrupts the list.
      *
      * @example
      * ```typescript
@@ -135,7 +139,7 @@ export class NetworkList {
         this.recordSize = this.addressSize * 2;
         // Derived from the stored bytes, never from the constructor argument. A
         // Buffer's `length` is its byte count, and an array's is its element
-        // count before duplicate ranges are dropped — both overstate how many
+        // count before overlapping ranges are coalesced — both overstate how many
         // records exist, and includes() uses this as its binary-search bound, so
         // an overstatement makes it probe past the end and miss real records.
         this.length = this.bytesLength / this.recordSize;
@@ -151,9 +155,12 @@ export class NetworkList {
      * Screen untrusted input with {@link isValid} first.
      *
      * @remarks
-     * Binary search over the sorted records, so O(log n) in the number of networks.
-     * An address of the other family returns `false` rather than throwing, which is
-     * what lets {@link Networks} ask both of its lists without checking first.
+     * Binary search over the sorted, disjoint records, so O(log n) in the number of
+     * networks. Disjointness is not incidental — {@link toBinaryList} coalesces
+     * overlaps precisely so that discarding one half of the list at each probe can
+     * never discard a record that covers the address. An address of the other family
+     * returns `false` rather than throwing, which is what lets {@link Networks} ask
+     * both of its lists without checking first.
      *
      * Ranges are inclusive at both ends, so a `/32` matches exactly its one address.
      */
@@ -228,10 +235,12 @@ export class NetworkList {
      * @defaultValue `canonical` defaults to `false`
      *
      * @remarks
-     * Not necessarily the records you constructed with. Each stored range is
-     * re-expressed as its minimal cover, so duplicates are gone and a range that
-     * does not align to one prefix comes back as several records. The addresses
-     * covered are identical; the record list need not be.
+     * Not necessarily the records you constructed with. Overlapping inputs were
+     * already coalesced at construction, so a supernet listed beside a subnet of it
+     * comes back as just the supernet. Each stored range is then re-expressed as its
+     * minimal cover, so a range that does not align to one prefix comes back as
+     * several records. The addresses covered are identical; the record list need not
+     * be.
      */
     public toArray(canonical: boolean = false) {
         return toStringArray(

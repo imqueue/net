@@ -260,10 +260,15 @@ describe('NetworkList', () => {
             );
         });
 
+        // The first network is a /16, not the /3 this used to carry: `2000::/3`
+        // spans 2000:: through 3fff:…, so it contains the other two, and once
+        // overlaps are coalesced the whole fixture collapses to one record and
+        // stops saying anything about duplicates. Nesting has its own coverage
+        // in `overlapping networks` below.
         it('should avoid duplicate networks', () => {
             const list = new NetworkList([
-                '2000:0000:0000:0000:0000:0000:0000:0000/3',
-                '2000:0000:0000:0000:0000:0000:0000:0000/3',
+                '2000:0000:0000:0000:0000:0000:0000:0000/16',
+                '2000:0000:0000:0000:0000:0000:0000:0000/16',
                 '2001:0800:0000:0000:0000:0000:0000:0000/21',
                 '2001:0800:0000:0000:0000:0000:0000:0000/21',
                 '2002:0000:0000:1234:0000:0000:0000:0000/64',
@@ -271,7 +276,7 @@ describe('NetworkList', () => {
             ]);
 
             assert.deepEqual(list.toArray(true), [
-                '2000:0000:0000:0000:0000:0000:0000:0000/3',
+                '2000:0000:0000:0000:0000:0000:0000:0000/16',
                 '2001:0800:0000:0000:0000:0000:0000:0000/21',
                 '2002:0000:0000:1234:0000:0000:0000:0000/64',
             ]);
@@ -290,7 +295,7 @@ describe('NetworkList', () => {
 
             const list6 = new NetworkList([
                 '2002::1234:abcd:ffff:c0a8:101/64',
-                '2000::/3',
+                '2000::/16',
                 '2001:800::/21',
             ]);
 
@@ -306,9 +311,13 @@ describe('NetworkList', () => {
                 assert.equal(list.includes(ip), false);
             }
 
+            // `2000::/16` where this used to say `2000::/3`, because 3002:: is
+            // *inside* 2000::/3 — this assertion only held while the overlap bug
+            // kept the supernet unreachable, so leaving the /3 would now make it
+            // fail for the correct reason.
             const list6 = new NetworkList([
                 '2002::1234:abcd:ffff:c0a8:101/64',
-                '2000::/3',
+                '2000::/16',
                 '2001:800::/21',
             ]);
 
@@ -323,7 +332,7 @@ describe('NetworkList', () => {
         it('should be JSON-serializable', () => {
             const list = new NetworkList(ipv4mask32);
             const list6 = new NetworkList([
-                '2000:0000:0000:0000:0000:0000:0000:0000/3',
+                '2000:0000:0000:0000:0000:0000:0000:0000/16',
                 '2001:0800:0000:0000:0000:0000:0000:0000/21',
                 '2002:0000:0000:1234:0000:0000:0000:0000/64',
             ]);
@@ -334,7 +343,7 @@ describe('NetworkList', () => {
 
             assert.doesNotThrow(() => JSON.stringify(list6));
             assert.equal(Array.isArray(list6.toJSON()), true);
-            assert.equal(list6.toJSON()[0], '2000::/3');
+            assert.equal(list6.toJSON()[0], '2000::/16');
         });
     });
 
@@ -353,11 +362,11 @@ describe('NetworkList', () => {
         it('should return packed form of IPv6 by default', () => {
             const list6 = new NetworkList([
                 '2002::1234:abcd:ffff:c0a8:101/64',
-                '2000::/3',
+                '2000::/16',
                 '2001:800::/21',
             ]);
 
-            assert.equal(list6.toArray()[0], '2000::/3');
+            assert.equal(list6.toArray()[0], '2000::/16');
             assert.equal(list6.toArray()[1], '2001:800::/21');
             assert.equal(list6.toArray()[2], '2002::1234:0:0:0:0/64');
         });
@@ -365,13 +374,13 @@ describe('NetworkList', () => {
         it('should return canonical form of IPv6 if asked', () => {
             const list6 = new NetworkList([
                 '2002::1234:abcd:ffff:c0a8:101/64',
-                '2000::/3',
+                '2000::/16',
                 '2001:800::/21',
             ]);
 
             assert.equal(
                 list6.toArray(true)[0],
-                '2000:0000:0000:0000:0000:0000:0000:0000/3',
+                '2000:0000:0000:0000:0000:0000:0000:0000/16',
             );
             assert.equal(
                 list6.toArray(true)[1],
@@ -420,6 +429,96 @@ describe('NetworkList', () => {
 
                 assert.equal(list.length, list.bytesLength / list.recordSize);
             }
+        });
+    });
+
+    // The sibling of the `length` failure above, reached from the other side.
+    // Binary search is sound only over disjoint ranges, so toBinaryList()
+    // coalesces overlaps instead of storing a network next to a subnet of it.
+    // Left overlapping, a probe that lands on the nested subnet and finds the
+    // target above its end moves right and never revisits the supernet sitting
+    // at a lower index — no throw, no bad index, just the same silent false
+    // negative on a membership test. It needs three records to surface: with
+    // two, the first probe is index 0, which is the supernet, and the answer
+    // comes out right for the wrong reason.
+    describe('overlapping networks', () => {
+        it('should match an address the supernet covers', () => {
+            const list = new NetworkList([
+                '192.168.0.0/16',
+                '10.0.0.0/8',
+                '10.1.0.0/16',
+            ]);
+
+            // 10.9.9.9 is outside the /16 but well inside the /8.
+            assert.equal(list.includes('10.9.9.9'), true);
+            assert.equal(list.includes('10.1.2.3'), true);
+            assert.equal(list.includes('192.168.1.1'), true);
+            assert.equal(list.includes('11.9.9.9'), false);
+        });
+
+        it('should match an address the supernet covers, IPv6', () => {
+            const list6 = new NetworkList([
+                '2002::/16',
+                '2001:db8::/32',
+                '2001:db8:1::/48',
+            ]);
+
+            assert.equal(list6.includes('2001:db8:9999::1'), true);
+            assert.equal(list6.includes('2001:db8:1::1'), true);
+            assert.equal(list6.includes('2002::1'), true);
+            assert.equal(list6.includes('2003::1'), false);
+        });
+
+        it('should not depend on the supernet being listed first', () => {
+            const list = new NetworkList([
+                '10.1.0.0/16',
+                '10.0.0.0/8',
+                '192.168.0.0/16',
+            ]);
+
+            assert.equal(list.includes('10.9.9.9'), true);
+        });
+
+        it('should widen a record when a wider one shares its start', () => {
+            // Equal start addresses, so the sort cannot separate them and the
+            // merge has to extend the range it already holds rather than keep
+            // the narrower end it saw first.
+            const list = new NetworkList([
+                '10.0.0.0/16',
+                '10.0.0.0/8',
+                '192.168.0.0/16',
+            ]);
+
+            assert.equal(list.length, 2);
+            assert.equal(list.includes('10.9.9.9'), true);
+        });
+
+        it('should store overlapping input as its cover', () => {
+            const list = new NetworkList([
+                '192.168.0.0/16',
+                '10.0.0.0/8',
+                '10.1.0.0/16',
+            ]);
+
+            // Three records in, two stored: the subnet is absorbed. The
+            // addresses covered are unchanged, the record count is not, so
+            // length drops and toArray() reports the minimal cover.
+            assert.equal(list.length, 2);
+            assert.equal(list.bytesLength, 16);
+            assert.deepEqual(list.toArray(), ['10.0.0.0/8', '192.168.0.0/16']);
+        });
+
+        it('should keep merely adjacent networks apart', () => {
+            // Overlap is merged, adjacency is not. 11/8 and 12/8 abut, but
+            // their union is not a single prefix, so a merged record would
+            // re-expand into two and the buffer round trip would reject it.
+            const list = new NetworkList(['11.0.0.0/8', '12.0.0.0/8']);
+
+            assert.equal(list.length, 2);
+            assert.deepEqual(list.toArray(), ['11.0.0.0/8', '12.0.0.0/8']);
+            assert.doesNotThrow(
+                () => new NetworkList(list.networks, NetworkType.IPV4),
+            );
         });
     });
 
